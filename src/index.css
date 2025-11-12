@@ -1,0 +1,38 @@
+/* 1. Nạp các lớp cơ bản của Tailwind CSS */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 2. Import fonts */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Lobster&family=Montserrat:wght@700&family=Pacifico&family=Playfair+Display:wght@700&display=swap');
+
+/* 3. DÙNG @apply (BÂY GIỜ SẼ HOẠT ĐỘNG VỚI v3) */
+@layer base {
+  body {
+    font-family: 'Montserrat', sans-serif;
+    /* (class nền 'bg-gray-900' đã ở file index.html) */
+  }
+
+  /* Định nghĩa style cho input/select/textarea bằng @apply */
+  input,
+  select,
+  textarea {
+    @apply bg-gray-700 border border-gray-600 rounded-md p-2 text-white;
+    @apply focus:ring-blue-500 focus:border-blue-500 focus:outline-none;
+    @apply transition-colors duration-200;
+  }
+}
+
+/* 4. Tùy chỉnh thanh cuộn (Dùng @apply) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-gray-800;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-600 rounded-md;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
+}
