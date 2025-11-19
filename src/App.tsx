@@ -506,13 +506,27 @@ const App: React.FC = () => {
                 mimeType: 'image/png'
               };
 
+              // const result = await generateImageVariation(
+              //   modelImage,
+              //   tempProductImage,
+              //   background || 'studio trắng chuyên nghiệp',
+              //   aspectRatio,
+              //   prompt
+              // );
+
               const result = await generateImageVariation(
-                modelImage,
-                tempProductImage,
-                background || 'studio trắng chuyên nghiệp',
-                aspectRatio,
-                prompt
-              );
+              modelImage,
+              {
+                file: productImage.file,
+                base64: extractedProductBase64,
+                previewUrl: productImage.previewUrl,
+                mimeType: 'image/png'
+              },
+              background || 'studio trắng chuyên nghiệp',
+              aspectRatio,
+              prompt,
+              extractedProductBase64  // ← THÊM tham số extracted product
+            );
 
               // CẬP NHẬT KẾT QUẢ
               results[globalIndex] = result;

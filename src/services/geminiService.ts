@@ -608,3 +608,35 @@ export const downloadImage = (base64Data: string, filename: string = 'fashion-im
   link.href = `data:image/png;base64,${base64Data}`;
   link.click();
 };
+
+// === VALIDATE IMAGE DIMENSIONS ===
+export const validateImageDimensions = async (
+  base64Image: string, 
+  aspectRatio: string
+): Promise<{ isValid: boolean; actualSize: { width: number; height: number }; expectedSize: { width: number; height: number } }> => {
+  try {
+    const actualSize = await getImageDimensions(base64Image);
+    const expectedSize = calculateTargetSize(aspectRatio);
+    
+    const tolerance = 50;
+    const isValid = 
+      Math.abs(actualSize.width - expectedSize.width) <= tolerance && 
+      Math.abs(actualSize.height - expectedSize.height) <= tolerance;
+    
+    return { isValid, actualSize, expectedSize };
+  } catch (error) {
+    console.error("Lỗi kiểm tra kích thước ảnh:", error);
+    return { 
+      isValid: false, 
+      actualSize: { width: 0, height: 0 }, 
+      expectedSize: calculateTargetSize(aspectRatio) 
+    };
+  }
+};
+
+// === RESIZE IMAGE IF NEEDED (placeholder) ===
+export const resizeImageIfNeeded = async (base64Image: string, targetWidth: number, targetHeight: number): Promise<string> => {
+  // Triển khai resize image logic ở đây hoặc trả về ảnh gốc
+  console.log(`Resize image to ${targetWidth}x${targetHeight}`);
+  return base64Image;
+};
