@@ -7,35 +7,384 @@ if (!API_KEY) {
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-// === LOGIC TỪ DỰ ÁN 1 (AI Fashion Ad Creator) ===
-
-export const generateCompositeImage = async (image: ImagePayload): Promise<string> => {
+// === GENERATE COMPOSITE IMAGE - ĐÃ SỬA ĐỂ NHẬN EXTRACTED PRODUCT ===
+export const generateCompositeImage = async (
+  modelImage: ImagePayload, 
+  productImage: ImagePayload,
+  extractedProduct?: string // THÊM THAM SỐ MỚI
+): Promise<string> => {
   const model = 'gemini-2.5-flash-image';
-  const prompt = `From the source image, create a single, new, professional promotional image with a 9:16 aspect ratio, perfect for social media stories.
-  This new image MUST feature three artistic variations of the same person from the source photo, composed together in a stylish layout.
-  - It is absolutely critical that the face of the person in all three variations is an exact and faithful representation of the face in the source image. Do not alter their facial features, identity, or ethnicity.
-  - One variation should be the main focus: positioned centrally, clear and sharp.
-  - The other two variations should be secondary: placed in the background on the left and right, perhaps larger and slightly faded or stylized to create depth.
-  - Each of the three variations must have a different, flattering pose and expression that showcases the clothing from different angles.
-  - Crucially, you must replace the original background with a new, stylish, and complementary background that fits a modern fashion aesthetic. This could be a clean studio backdrop, a soft abstract gradient, or a subtle, out-of-focus lifestyle scene. The background should enhance the subject, not distract from them.
-  - The final output must be a single, complete image with the subject variations and the new background integrated seamlessly. Do not add any text, logos, or banners.`;
   
+  // XÁC ĐỊNH CÓ DÙNG EXTRACTED PRODUCT HAY KHÔNG
+  const usingExtractedProduct = !!extractedProduct;
+  const finalProductImage = usingExtractedProduct ? extractedProduct : productImage.base64;
+
+  const prompt = `
+**TASK: TẠO POSTER THỜI TRANG CHÂN THỰC - BẢO TOÀN 100% TÍNH XÁC THỰC**
+
+**Nguồn 1: ẢNH NGƯỜI MẪU** - Chứa khuôn mặt người thật
+**Nguồn 2: ${usingExtractedProduct ? 'ẢNH SẢN PHẨM ĐÃ TÁCH' : 'ẢNH SẢN PHẨM GỐC'}** - ${usingExtractedProduct ? 'Sản phẩm đã được tách sạch (không có người)' : 'Chứa sản phẩm thời trang THẬT'}
+
+**YÊU CẦU KHẮT KHE VỀ ĐỘ CHÂN THỰC:**
+
+1. **BẢO TOÀN KHUÔN MẶT 100%:**
+   - Giữ nguyên 100% đặc điểm khuôn mặt từ ảnh model
+   - Giữ nguyên màu da, hình dạng mắt, mũi, miệng
+   - Giữ nguyên kiểu tóc, màu tóc
+   - Giữ nguyên biểu cảm tự nhiên
+
+2. **SỬ DỤNG SẢN PHẨM THẬT 100%:**
+   - Dùng CHÍNH XÁC sản phẩm từ ${usingExtractedProduct ? 'ảnh sản phẩm đã tách' : 'ảnh product'}
+   - Giữ nguyên màu sắc, chất liệu, texture
+   - Giữ nguyên form dáng, kiểu may
+   - Giữ nguyên tất cả chi tiết: nút, khóa, đường may
+
+3. **TÍNH CHÂN THỰC CAO:**
+   - Ánh sáng tự nhiên, bóng đổ thực tế
+   - Kết cấu da thật, tóc thật
+   - Sản phẩm vừa vặn tự nhiên
+   - Ảnh trông như chụp thật, không phải AI
+
+4. **${usingExtractedProduct ? 'SỬ DỤNG SẢN PHẨM ĐÃ TÁCH SẠCH' : 'TÁCH VÀ SỬ DỤNG SẢN PHẨM TỪ ẢNH GỐC'}:**
+   - ${usingExtractedProduct ? 'Sản phẩm đã được tách sẵn - không có người mẫu khác' : 'Loại bỏ mọi người mẫu khác từ ảnh sản phẩm'}
+   - Chỉ sử dụng sản phẩm thời trang
+   - Đảm bảo không có khuôn mặt nào khác ngoài model chính
+
+5. **KỸ THUẬT:**
+   - Layout 9:16 chuyên nghiệp
+   - Background phù hợp
+   - KHÔNG chữ, KHÔNG logo
+   - Tỷ lệ chính xác 9:16
+
+**ĐẦU RA:** Poster thời trang chân thực, người mẫu và sản phẩm giống 100% ảnh gốc.
+`;
+
   try {
-     const response = await ai.models.generateContent({
+    const imageParts = [
+      { text: prompt },
+      { text: "👤 MODEL IMAGE (for face extraction):" },
+      { inlineData: { data: modelImage.base64, mimeType: modelImage.mimeType } },
+      { text: `🛍️ ${usingExtractedProduct ? 'EXTRACTED PRODUCT' : 'PRODUCT IMAGE'} (use ACTUAL product):` },
+      { inlineData: { data: finalProductImage, mimeType: usingExtractedProduct ? 'image/png' : productImage.mimeType } }
+    ];
+
+    console.log(`🖼️ Generating composite image with ${usingExtractedProduct ? 'EXTRACTED product' : 'original product'}`);
+
+    const response = await ai.models.generateContent({
       model: model,
-      contents: { parts: [{ text: prompt }, { inlineData: { data: image.base64, mimeType: image.mimeType } }] },
+      contents: { 
+        parts: imageParts
+      },
       config: { responseModalities: [Modality.IMAGE] },
     });
+
     if (response.candidates && response.candidates[0].content.parts[0]?.inlineData) {
+      console.log('✅ Composite image generated successfully');
       return response.candidates[0].content.parts[0].inlineData.data;
     }
     throw new Error("AI did not return a composite image.");
   } catch(error) {
-    console.error("Error calling Gemini for composite image generation:", error);
-    throw new Error("Failed to generate composite image using Gemini API.");
+    console.error("❌ Error generating composite image:", error);
+    throw new Error(`Failed to generate composite image: ${error.message}`);
   }
 };
 
+// === GENERATE IMAGE VARIATION - ĐÃ SỬA ĐỂ DÙNG EXTRACTED PRODUCT ===
+export const generateImageVariation = async (
+  modelImage: ImageFile,
+  productImage: ImageFile,
+  background: string,
+  aspectRatio: string,
+  cameraAngle: string,
+  extractedProduct?: string // THÊM THAM SỐ MỚI
+): Promise<string> => {
+  try {
+    const model = 'gemini-2.5-flash-image';
+    const targetSize = calculateTargetSize(aspectRatio);
+
+    console.log('🔍 Starting product extraction and image generation process...');
+
+    // 🔄 BƯỚC 1: TÁCH SẢN PHẨM (NẾU CHƯA CÓ)
+    let extractedProductBase64: string;
+    if (extractedProduct) {
+      console.log('🛍️ Using provided extracted product');
+      extractedProductBase64 = extractedProduct;
+    } else {
+      try {
+        console.log('🛍️ Extracting product from original image...');
+        extractedProductBase64 = await extractProductFromImage(productImage);
+      } catch (extractionError) {
+        console.error('❌ Product extraction failed, using original image:', extractionError);
+        extractedProductBase64 = productImage.base64;
+      }
+    }
+
+    // 🔄 BƯỚC 2: TẠO ẢNH VỚI SẢN PHẨM ĐÃ TÁCH
+    const textPrompt = `
+**🎯 FASHION INTEGRATION - MODEL WITH ${extractedProduct ? 'EXTRACTED' : 'ORIGINAL'} PRODUCT**
+
+**TASK: PLACE OUR MODEL INTO THE FASHION PRODUCT**
+
+**IMAGE COMPONENTS:**
+1. **MODEL IMAGE:** Source for face and body
+2. **${extractedProduct ? 'EXTRACTED PRODUCT' : 'PRODUCT IMAGE'}:** ${extractedProduct ? 'Pure fashion item (already isolated)' : 'Fashion item to extract and use'}
+3. **BACKGROUND:** ${background}
+4. **CAMERA ANGLE:** ${cameraAngle}
+
+**INTEGRATION PROCESS:**
+1. **USE EXACT FACE** from model image - preserve 100% facial features
+2. **${extractedProduct ? 'APPLY EXTRACTED PRODUCT' : 'EXTRACT AND APPLY PRODUCT'}** naturally onto the model
+3. **MAINTAIN** natural body proportions and pose
+4. **ENSURE** realistic product fit and drape
+5. **CREATE** professional fashion photography result
+
+**FACE PRESERVATION:**
+- Keep 100% identical facial features from model
+- Maintain natural, fresh expression
+- Bright eyes with subtle smile
+- Confident and approachable vibe
+
+**PRODUCT INTEGRATION:**
+- ${extractedProduct ? 'Use the extracted product exactly as provided' : 'Extract and use only the fashion item from product image'}
+- Ensure natural fit on model's body
+- Maintain product color, texture, and design
+- Realistic fabric movement and drape
+- ${extractedProduct ? 'Product is already clean - no people to remove' : 'Remove any other people from product image'}
+
+**OUTPUT REQUIREMENTS:**
+- Size: ${targetSize.width}x${targetSize.height}px
+- Professional fashion photography quality
+- Natural lighting and composition
+- Model wearing the product naturally
+
+**FINAL CHECK:**
+The result should show our model naturally wearing the fashion product, with perfect face preservation and realistic product integration.
+`;
+
+    const modelImagePart = {
+      inlineData: {
+        data: modelImage.base64,
+        mimeType: modelImage.mimeType,
+      },
+    };
+
+    const productPart = {
+      inlineData: {
+        data: extractedProductBase64,
+        mimeType: extractedProduct ? 'image/png' : productImage.mimeType,
+      },
+    };
+
+    const textPart = { text: textPrompt };
+
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: { 
+        parts: [
+          textPart,
+          { text: "👤 MODEL IMAGE - USE THIS EXACT FACE AND BODY:" },
+          modelImagePart,
+          { text: `🛍️ ${extractedProduct ? 'EXTRACTED PRODUCT' : 'PRODUCT IMAGE'} - ${extractedProduct ? 'APPLY THIS FASHION ITEM' : 'EXTRACT AND USE THIS FASHION ITEM'}:` },
+          productPart,
+          { text: `🎯 INTEGRATION: Place model into the product with ${cameraAngle} angle and ${background} background` }
+        ] 
+      },
+      config: {
+        responseModalities: [Modality.IMAGE],
+      },
+    });
+
+    if (response.candidates && response.candidates[0].content.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
+          const resultBase64 = part.inlineData.data;
+          
+          const dimensions = await getImageDimensions(resultBase64);
+          const isCorrectSize = dimensions.width === targetSize.width && dimensions.height === targetSize.height;
+          
+          if (!isCorrectSize) {
+            console.error(`❌ Wrong dimensions: ${dimensions.width}x${dimensions.height}`);
+          } else {
+            console.log(`✅ Correct dimensions: ${dimensions.width}x${dimensions.height}`);
+          }
+          
+          console.log(`🎉 Image generated successfully with ${extractedProduct ? 'extracted product' : 'original product'}`);
+          return resultBase64;
+        }
+      }
+    }
+    
+    throw new Error("No image generated");
+
+  } catch (error) {
+    console.error("💥 Image generation error:", error);
+    throw error;
+  }
+};
+
+// === EXTRACT PRODUCT FROM IMAGE - GIỮ NGUYÊN ===
+export const extractProductFromImage = async (productImage: ImageFile): Promise<string> => {
+  try {
+    const model = 'gemini-2.5-flash-image';
+    
+    const textPrompt = `
+**🎯 PRODUCT EXTRACTION - ISOLATE FASHION ITEM**
+
+**TASK: EXTRACT ONLY THE FASHION PRODUCT FROM THE IMAGE**
+
+**CRITICAL INSTRUCTIONS:**
+1. **REMOVE ALL HUMAN ELEMENTS** - completely erase any faces, bodies, or people
+2. **EXTRACT ONLY THE CLOTHING ITEM** - focus solely on the fashion product
+3. **PRESERVE PRODUCT DETAILS** - maintain exact color, texture, design, and form
+4. **CREATE CLEAN PRODUCT ISOLATION** - remove background and human elements
+
+**STEP-BY-STEP EXTRACTION:**
+1. **IDENTIFY** the main fashion item (clothing, accessory, etc.)
+2. **SEGMENT** the product from human elements and background
+3. **REMOVE** all facial features, body parts, and people
+4. **ISOLATE** the pure product with transparent/white background
+5. **PRESERVE** exact product specifications
+
+**PRODUCT PRESERVATION - MUST KEEP:**
+- ✅ Exact color and color patterns
+- ✅ Fabric texture and material appearance
+- ✅ Design details (prints, embroidery, patterns)
+- ✅ Product form and cut
+- ✅ All hardware (buttons, zippers, buckles)
+- ✅ Size proportions and fit characteristics
+
+**ELEMENTS TO REMOVE - MUST DELETE:**
+- 🚫 All human faces and facial features
+- 🚫 Body parts (arms, legs, torso)
+- 🚫 Hair and skin elements
+- 🚫 Background environments
+- 🚫 Other models or people
+
+**OUTPUT REQUIREMENTS:**
+- Clean product isolation on transparent/white background
+- No remnants of human elements
+- Perfect preservation of product details
+- Ready for integration with new model
+
+**FINAL CHECK:**
+The output should show ONLY the fashion item, completely separate from any human elements, ready to be worn by a different model.
+`;
+
+    const productImagePart = {
+      inlineData: {
+        data: productImage.base64,
+        mimeType: productImage.mimeType,
+      },
+    };
+
+    const textPart = { text: textPrompt };
+
+    console.log('🔍 Analyzing and extracting product from image...');
+
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: { 
+        parts: [
+          textPart,
+          { text: "🛍️ PRODUCT IMAGE - EXTRACT ONLY THE FASHION ITEM (REMOVE ALL PEOPLE):" },
+          productImagePart
+        ] 
+      },
+      config: {
+        responseModalities: [Modality.IMAGE],
+      },
+    });
+
+    if (response.candidates && response.candidates[0].content.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
+          const extractedProductBase64 = part.inlineData.data;
+          console.log('✅ Product extracted successfully');
+          return extractedProductBase64;
+        }
+      }
+    }
+
+    throw new Error("Could not extract product from image");
+
+  } catch (error) {
+    console.error("💥 Product extraction error:", error);
+    throw new Error(`Product extraction failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
+// === GENERATE PRODUCT VARIANTS - HÀM MỚI ===
+export const generateProductVariants = async (
+  extractedProduct: string,
+  style: string = 'modern fashion'
+): Promise<string[]> => {
+  try {
+    const model = 'gemini-2.5-flash-image';
+    
+    const prompt = `
+**TASK: CREATE PRODUCT VARIATIONS USING EXTRACTED PRODUCT**
+
+**SOURCE: EXTRACTED PRODUCT IMAGE** - Clean, isolated fashion item
+
+**REQUIREMENTS:**
+1. USE ONLY the extracted product as reference
+2. CREATE 3 different variations showing the product in different:
+   - Contexts/backgrounds
+   - Lighting conditions  
+   - Styling approaches
+3. Each variation should be professional 1:1 product shot
+4. Maintain product details and features accurately
+5. No human models - focus on product presentation
+
+**STYLE:** ${style}
+
+**OUTPUT:** 3 distinct product variation images
+`;
+
+    const productPart = {
+      inlineData: {
+        data: extractedProduct,
+        mimeType: 'image/png',
+      },
+    };
+
+    console.log('🎨 Generating product variants from extracted product...');
+
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: { 
+        parts: [
+          { text: prompt },
+          { text: "🛍️ EXTRACTED PRODUCT - CREATE VARIATIONS FROM THIS ITEM:" },
+          productPart
+        ] 
+      },
+      config: {
+        responseModalities: [Modality.IMAGE],
+      },
+    });
+
+    const generatedImages: string[] = [];
+    
+    if (response.candidates && response.candidates[0].content.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
+          generatedImages.push(part.inlineData.data);
+        }
+      }
+    }
+
+    console.log(`✅ Generated ${generatedImages.length} product variants`);
+    return generatedImages.slice(0, 3); // Return max 3 images
+  } catch (error) {
+    console.error('❌ Error generating product variants:', error);
+    throw new Error(`Failed to generate product variants: ${error.message}`);
+  }
+};
+
+// === CÁC HÀM PHỤ TRỢ GIỮ NGUYÊN ===
+
+// === GENERATE AD COPY ===
 export const generateAdCopy = async (images: ImagePayload[]): Promise<string> => {
   const model = 'gemini-2.5-flash';
   const prompt = `
@@ -61,25 +410,7 @@ export const generateAdCopy = async (images: ImagePayload[]): Promise<string> =>
   }
 };
 
-
-// === LOGIC TỪ DỰ ÁN 2 (AI Outfit Extractor) ===
-
-// Lấy prompt chi tiết, không chỉ là tóm tắt
-const getPromptForType = (type: ExtractionType): string => {
-  switch (type) {
-    case 'top':
-      return "Nhiệm vụ của bạn là tách trang phục một cách chính xác. Từ hình ảnh được cung cấp, hãy xác định trang phục phía trên (áo sơ mi, áo phông, áo khoác, v.v.).";
-    case 'bottom':
-      return "Nhiệm vụ của bạn là tách trang phục một cách chính xác. Từ hình ảnh được cung cấp, hãy xác định trang phục phía dưới (quần, váy, quần short, v.v.).";
-    case 'full':
-    default:
-      return "Nhiệm vụ của bạn là tách trang phục một cách chính xác. Từ hình ảnh được cung cấp, hãy xác định toàn bộ trang phục mà người đó đang mặc.";
-  }
-}
-
-
-// === LOGIC TỪ DỰ ÁN 3 (Tools ghép người) ===
-
+// === ENHANCE BACKGROUND PROMPT ===
 export const enhanceBackgroundPrompt = async (backgroundPrompt: string): Promise<{ enhanced_background: string }> => {
   try {
     const model = 'gemini-2.5-flash';
@@ -123,139 +454,18 @@ export const enhanceBackgroundPrompt = async (backgroundPrompt: string): Promise
   }
 };
 
-export const generateImageVariation = async (
-  sourceImage: ImageFile,
-  prompts: { outfit: string, background: string },
-  aspectRatio: string,
-  cameraAngle: string,
-): Promise<string> => {
-  try {
-    const model = 'gemini-2.5-flash-image';
-
-    // Xử lý ảnh gốc (từ P3, App.tsx)
-    // Chúng ta phải xử lý ảnh gốc để thêm nền xanh cho đúng logic của P3
-    const preprocessedImage = await preprocessImageForAspectRatio(sourceImage, aspectRatio);
-
-    const textPrompt = `
-      **Nhiệm vụ: Cấy ghép kỹ thuật số - Chỉ thay đổi trang phục và bối cảnh.**
-
-      **QUY TẮC BẮT BUỘC:**
-      1.  **GIỮ NGUYÊN 100% NGƯỜI GỐC:** Giữ lại chính xác người trong ảnh gốc: khuôn mặt, nét mặt, kiểu tóc, màu tóc, màu da, dáng người. KHÔNG ĐƯỢC THAY ĐỔI.
-      2.  **XỬ LÝ NỀN XANH (YÊU CẦU TUYỆT ĐỐI):** Hình ảnh đầu vào có một nền màu xanh lá cây sáng (#00FF00) bao quanh. Nhiệm vụ của bạn là phải **XÓA SẠCH** và **THAY THẾ HOÀN TOÀN** 100% vùng màu xanh này bằng bối cảnh được mô tả. Đây là yêu cầu quan trọng nhất. **KHÔNG ĐƯỢC PHÉP** để lại bất kỳ pixel màu xanh nào trong ảnh kết quả. Toàn bộ khung hình phải được lấp đầy.
-      3.  **THI CÔNG TRANG PHỤC THEO BẢN VẼ KỸ THUẬT (Mô tả trang phục):** Mô tả trang phục dưới đây là một **bản vẽ kỹ thuật không thể thay đổi**. Nhiệm vụ của bạn là thi công chính xác 100% từng chi tiết. **TUYỆT ĐỐI CẤM** việc diễn giải, sáng tạo, thêm, bớt, hoặc thay đổi bất kỳ chi tiết nào. 
-      4.  **THAY ĐỔI:** Chỉ thay đổi trang phục và bối cảnh dựa trên mô tả dưới đây.
-      5.  **TỈ LỆ KHUNG HÌNH:** Tạo ra hình ảnh với tỉ lệ khung hình chính xác là ${aspectRatio}.
-      6.  **GÓC CHỤP:** Chụp ảnh từ góc ${cameraAngle}.
-      7.  **CHẤT LƯỢNG:** Hình ảnh phải siêu thực, chất lượng 4K, chi tiết và sắc nét.
-
-      **Mô tả chi tiết:**
-      -   **Trang phục:** ${prompts.outfit}
-      -   **Bối cảnh:** ${prompts.background}
-
-      **ĐẦU RA:** Chỉ trả về duy nhất một tệp hình ảnh. Không trả về bất kỳ văn bản nào.
-    `;
-
-    const imagePart = {
-      inlineData: {
-        data: preprocessedImage.base64,
-        mimeType: preprocessedImage.mimeType,
-      },
-    };
-
-    const textPart = { text: textPrompt };
-
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: { parts: [imagePart, textPart] },
-      config: {
-        responseModalities: [Modality.IMAGE, Modality.TEXT],
-      },
-    });
-
-    if (response.candidates && response.candidates[0].content.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
-          return part.inlineData.data;
-        }
-      }
-    }
-    
-    // Handle lỗi (copy từ P3)
-    if (response.text) {
-        throw new Error(`AI trả về tin nhắn văn bản thay vì ảnh: "${response.text}"`);
-    }
-    const blockReason = response.candidates?.[0]?.finishReason;
-    if (blockReason && blockReason !== 'STOP') {
-        throw new Error(`Bị chặn bởi lý do an toàn hoặc lỗi khác: ${blockReason}`);
-    }
-    throw new Error("Không có ảnh nào được tạo trong phản hồi.");
-
-  } catch (error) {
-    console.error("Lỗi tạo biến thể ảnh:", error);
-    if (error instanceof Error) {
-        throw error;
-    }
-    throw new Error("Một lỗi không xác định đã xảy ra khi tạo ảnh.");
+// === ANALYZE SPECIFIC OUTFIT PART ===
+const getPromptForType = (type: ExtractionType): string => {
+  switch (type) {
+    case 'top':
+      return "PHÂN TÍCH CHI TIẾT 100% - TRANG PHỤC PHÍA TRÊN (ÁO)";
+    case 'bottom':
+      return "PHÂN TÍCH CHI TIẾT 100% - TRANG PHỤC PHÍA DƯỚI (QUẦN/VÁY)";
+    case 'full':
+    default:
+      return "PHÂN TÍCH CHI TIẾT 100% - TOÀN BỘ TRANG PHỤC";
   }
-};
-
-// Hàm xử lý nền xanh (Lấy từ P3 - App.tsx, chuyển vào service)
-const preprocessImageForAspectRatio = (imageFile: ImageFile, targetAspectRatio: string): Promise<ImageFile> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.src = imageFile.previewUrl;
-    img.onload = () => {
-        const [w, h] = targetAspectRatio.split(':').map(Number);
-        const targetRatio = w / h;
-        
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject(new Error("Không thể tạo canvas context"));
-
-        const imageRatio = img.naturalWidth / img.naturalHeight;
-        
-        let newWidth, newHeight;
-        if (imageRatio > targetRatio) {
-          newWidth = img.naturalWidth;
-          newHeight = img.naturalWidth / targetRatio;
-        } else {
-          newWidth = img.naturalHeight * targetRatio;
-          newHeight = img.naturalHeight;
-        }
-
-        canvas.width = newWidth;
-        canvas.height = newHeight;
-        
-        ctx.fillStyle = '#00FF00'; // Nền xanh lá
-        ctx.fillRect(0, 0, newWidth, newHeight);
-
-        const x = (newWidth - img.naturalWidth) / 2;
-        const y = (newHeight - img.naturalHeight) / 2;
-
-        ctx.drawImage(img, x, y, img.naturalWidth, img.naturalHeight);
-
-        canvas.toBlob((blob) => {
-          if (!blob) return reject(new Error("Không thể tạo blob"));
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const base64 = (e.target?.result as string).split(',')[1];
-            const file = new File([blob], "preprocessed_image.jpeg", { type: 'image/jpeg' });
-            resolve({
-              file,
-              previewUrl: URL.createObjectURL(file),
-              base64,
-              mimeType: 'image/jpeg',
-            });
-          };
-          reader.readAsDataURL(blob);
-        }, 'image/jpeg', 0.95);
-    };
-    img.onerror = () => reject(new Error("Không thể tải ảnh gốc"));
-  });
-};
-
-
-// === HÀM MỚI (Gộp P2 + P3) ===
+}
 
 export const analyzeSpecificOutfitPart = async (
   styleImage: ImageFile,
@@ -264,37 +474,61 @@ export const analyzeSpecificOutfitPart = async (
   try {
     const model = 'gemini-2.5-flash';
     
-    // 1. Lấy logic "focus" từ P2
     const focusPrompt = getPromptForType(extractionType);
 
-    // 2. Lấy logic "phân tích chi tiết" từ P3 và tiêm logic P2 vào
     const analysisPrompt = `
-      Bạn là một chuyên gia giám định thời trang kỹ thuật số. Nhiệm vụ của bạn là tạo ra một bản 'báo cáo giám định' chi tiết đến từng micromet về trang phục trong ảnh.
-      
-      **NHIỆM VỤ ƯU TIÊN:** ${focusPrompt} 
-      
-      Sau khi đã xác định (các) món đồ thuộc nhiệm vụ ưu tiên, hãy thực hiện QUY TRÌNH GIÁM ĐỊNH BẮT BUỘC chỉ trên (các) món đồ đó. Bỏ qua tất cả các món đồ, phụ kiện, tóc, mặt người... không liên quan đến nhiệm vụ ưu tiên.
-      
-      **TƯ DUY KỸ THUẬT - KHÔNG SÁNG TẠO:**
-      * **Bạn là một máy quét 3D, không phải là nhà thiết kế.**
-      * **Mỗi từ phải tương ứng với một pixel.**
-      
-      **QUY TRÌNH GIÁM ĐỊNH BẮT BUỘC (ÁP DỤNG CHO MÓN ĐỒ ƯU TIÊN):**
+      BẠN LÀ MỘT HỆ THỐNG PHÂN TÍCH THỜI TRANG CHUYÊN SÂU - PHÂN TÍCH CHI TIẾT 100% VỚI ĐỘ CHÍNH XÁC TUYỆT ĐỐI
 
-      1.  **PHÂN LOẠI & LIỆT KÊ:** Xác định và liệt kê (các) món đồ thuộc nhiệm vụ ưu tiên.
-      2.  **PHÂN TÍCH MÀU SẮC (CẤP ĐỘ PHÒNG LAB):** * Với mỗi món đồ, xác định **CHÍNH XÁC** mã màu HEX.
-      3.  **GIÁM ĐỊNH CHẤT LIỆU & KẾT CẤU (CẢM QUAN VI MÔ):**
-          * Mô tả **kết cấu bề mặt**, **độ bóng**, **độ dày** và **cách nó đổ xuống, xếp nếp**.
-      4.  **GIẢI PHẪU KIỂU DÁNG & ĐƯỜNG CẮT:**
-          * Mô tả chi tiết hình dáng của từng món đồ.
-      5.  **SOI KÍNH HIỂN VI: HỌA TIẾT (PATTERNS):**
-          * Phân tích như một nhà toán học: kích thước, quy luật lặp lại.
-      6.  **GIÁM ĐỊNH PHÁP Y: CHI TIẾT TRANG TRÍ (EMBELLISHMENTS):**
-          * **KHÔNG CÓ CHI TIẾT NÀO LÀ QUÁ NHỎ.** Cúc áo, khóa kéo, đường thêu, ren...
+      **NHIỆM VỤ CHÍNH:** ${focusPrompt}
+
+      **QUY TRÌNH PHÂN TÍCH BẮT BUỘC - PHẢI TUÂN THỦ TỪNG BƯỚC:**
+
+      1. **XÁC ĐỊNH & PHÂN LOẠI CHÍNH XÁC:**
+         - Xác định chính xác từng món đồ thuộc phạm vi phân tích
+         - Phân loại rõ ràng: loại trang phục (áo thun, sơ mi, quần jeans, váy...)
+         - Kiểu dáng cơ bản (dáng ôm, rộng, suông...)
+
+      2. **PHÂN TÍCH MÀU SẮC - CẤP ĐỘ PHÒNG LAB:**
+         - Xác định CHÍNH XÁC mã màu HEX cho từng phần của trang phục
+         - Phân biệt rõ: màu chủ đạo, màu phụ, màu chi tiết
+         - Mô tả độ bão hòa, độ sáng/tối
+
+      3. **GIÁM ĐỊNH CHẤT LIỆU - CẢM QUAN KỸ THUẬT:**
+         - Chất liệu chính (cotton, linen, silk, denim, polyester, v.v.)
+         - Độ dày/mỏng, độ co giãn, độ cứng/mềm
+         - Kết cấu bề mặt (trơn, nhám, bóng, mờ, có vân)
+         - Cách tạo form (ôm body hay rộng rãi)
+
+      4. **PHÂN TÍCH KIỂU DÁNG & ĐƯỜNG CẮT:**
+         - Chiều dài chính xác (áo: crop-top, regular, dài; quần: short, regular, long)
+         - Kiểu cổ (cổ tròn, cổ tim, cổ V, cổ vuông...)
+         - Tay (không tay, ngắn, dài, loại tay)
+         - Đường may, đường cắt đặc biệt
+
+      5. **SOI CHI TIẾT HỌA TIẾT:**
+         - Họa tiết: trơn, kẻ sọc, caro, hoa, hình in...
+         - Kích thước họa tiết, mật độ lặp lại
+         - Vị trí họa tiết trên trang phục
+
+      6. **LIỆT KÊ CHI TIẾT TRANG TRÍ:**
+         - Cúc: số lượng, màu sắc, chất liệu, kiểu dáng
+         - Khóa kéo: loại, màu, vị trí
+         - Túi: số lượng, kiểu dáng, vị trí
+         - Đường viền, đường thêu, ren, đính đá...
+         - Các chi tiết đặc biệt khác
+
+      7. **TRẠNG THÁI & ĐẶC ĐIỂM:**
+         - Độ mới/cũ (nếu có thể nhận biết)
+         - Form dáng khi mặc
+         - Đặc điểm nổi bật nhất
 
       **YÊU CẦU ĐẦU RA:**
-      * **TUYỆT ĐỐI KHÔNG** mô tả người mẫu (mặt, tóc, da, dáng), hậu cảnh, hoặc bất cứ thứ gì ngoài (các) món đồ thuộc nhiệm vụ ưu tiên.
-      * Toàn bộ bản phân tích phải được gói gọn trong một đối tượng JSON duy nhất với key là 'outfit'.
+      - Mô tả PHẢI chi tiết, kỹ thuật, khách quan
+      - KHÔNG suy diễn, không sáng tạo thêm
+      - CHỈ tập trung vào trang phục được yêu cầu
+      - Bỏ qua người mẫu, hậu cảnh, phụ kiện không liên quan
+
+      Kết quả trả về dưới dạng JSON với key 'outfit' chứa toàn bộ mô tả chi tiết.
     `;
 
     const imagePart = {
@@ -315,7 +549,7 @@ export const analyzeSpecificOutfitPart = async (
           properties: {
             outfit: {
               type: Type.STRING,
-              description: 'Mô tả chi tiết về trang phục được yêu cầu (áo, quần hoặc cả bộ).',
+              description: 'Mô tả chi tiết 100% về trang phục được yêu cầu.',
             },
           },
         },
@@ -333,4 +567,44 @@ export const analyzeSpecificOutfitPart = async (
     console.error("Lỗi phân tích phần trang phục cụ thể:", error);
     throw new Error("Không thể phân tích ảnh sản phẩm. Vui lòng thử lại.");
   }
+};
+
+// === CÁC HÀM TIỆN ÍCH GIỮ NGUYÊN ===
+
+const calculateTargetSize = (aspectRatio: string): { width: number; height: number } => {
+  switch (aspectRatio) {
+    case '9:16':
+      return { width: 1080, height: 1920 };
+    case '1:1':
+      return { width: 1080, height: 1080 };
+    case '4:5':
+      return { width: 1080, height: 1350 };
+    case '16:9':
+      return { width: 1920, height: 1080 };
+    default:
+      const [widthRatio, heightRatio] = aspectRatio.split(':').map(Number);
+      const ratio = widthRatio / heightRatio;
+      const baseSize = 1080;
+      if (ratio > 1) {
+        return { width: Math.round(baseSize * ratio), height: baseSize };
+      } else {
+        return { width: baseSize, height: Math.round(baseSize / ratio) };
+      }
+  }
+};
+
+export const getImageDimensions = (base64Image: string): Promise<{ width: number; height: number }> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${base64Image}`;
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => reject(new Error("Không thể đọc kích thước ảnh"));
+  });
+};
+
+export const downloadImage = (base64Data: string, filename: string = 'fashion-image') => {
+  const link = document.createElement('a');
+  link.download = `${filename}-${Date.now()}.png`;
+  link.href = `data:image/png;base64,${base64Data}`;
+  link.click();
 };
